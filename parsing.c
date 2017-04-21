@@ -52,6 +52,10 @@ int main(int argc, char **argv) {
     char *input = readline("lispy > "); //uses malloc
     char ast[81]; //I don't know how to malloc ;(
 
+    if(strcmp(input, "\n")) {
+      continue;
+    }
+
     add_history(input);
 
     //parse user input
