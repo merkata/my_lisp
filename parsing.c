@@ -6,11 +6,23 @@
 
 #include "mpc.h"
 
+typedef struct {
+  int type;
+  long result;
+  int error;
+} lval;
+
+enum { LVAL_NUM, LVAL_ERR };
+enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
+
 long eval(mpc_ast_t *t);
 long eval_op(long x, char *op, long y);
 void usage(void);
 void throw_error(mpc_result_t *r);
 void prepare_ast(char *input, char *ast);
+lval lval_num(long result);
+lval lval_err(int err);
+void lval_print(lval v);
 
 int main(int argc, char **argv) {
   //
@@ -134,4 +146,37 @@ void throw_error(mpc_result_t *r) {
   //we did not parse correctly
   mpc_err_print(r->error);
   mpc_err_delete(r->error);
+}
+
+lval lval_num(long result) {
+  lval v;
+  v.result = result;
+  v.type = LVAL_NUM;
+  return v;
+}
+
+lval lval_err(int err) {
+  lval v;
+  v.error = err;
+  v.type = LVAL_ERR;
+  return v;
+}
+
+void lval_print(lval v) {
+  switch(v.type) {
+    case LVAL_ERR:
+      if(v.error == LERR_DIV_ZERO) {
+        printf("Division by zero error!\n");
+      }
+      if(v.error == LERR_BAD_OP) {
+        printf("Bad operator as value!\n");
+      }
+      if(v.error == LERR_BAD_NUM) {
+        printf("Number outside boundaries!\n");
+      }
+      break;
+    case LVAL_NUM:
+      printf("Received a value of %li\n", v.result);
+      break;
+  }
 }
