@@ -8,6 +8,7 @@
 
 long eval(mpc_ast_t *t);
 long eval_op(long x, char *op, long y);
+void usage(void);
 
 int main(int argc, char **argv) {
   //
@@ -40,17 +41,34 @@ mpca_lang(MPCA_LANG_DEFAULT,
 
     //parse user input
     mpc_result_t r;
-    if(mpc_parse("<stdin>", input, Lispy, &r)) {
-      //parsed successfully
-      //mpc_ast_print(r.output);
-      long result = eval(r.output);
-      printf("%li\n", result);
-      mpc_ast_delete(r.output);
+    if(strstr(input, "\\h")) {
+      usage();
+    } else if(strstr(input, "\\a")) {
+      char ast[80];
+      int i, pos;
+      for(i = 3, pos = 0; input[i] != '\0'; i++, pos++) {
+        ast[pos] = input[i];
+      }
+      ast[pos+1] = '\0';
+      if(mpc_parse("<stdin>", ast, Lispy, &r)) {
+        //parsed successfully
+        mpc_ast_print(r.output);
+      } else {
+        //we did not parse correctly
+        mpc_err_print(r.error);
+        mpc_err_delete(r.error);
+      } 
     } else {
-      //we did not parse correctly
-      mpc_err_print(r.error);
-      mpc_err_delete(r.error);
-    }
+        if(mpc_parse("<stdin>", input, Lispy, &r)) {
+          long result = eval(r.output);
+          printf("%li\n", result);
+          mpc_ast_delete(r.output);
+        } else {
+          //we did not parse correctly
+          mpc_err_print(r.error);
+          mpc_err_delete(r.error);
+        }
+      }
 
     free(input); //frees memory
 
@@ -84,4 +102,11 @@ long eval_op(long x, char *op, long y) {
   if(strcmp(op, "*") == 0 ) { return (x * y); }
   if(strcmp(op, "/") == 0 ) { return (x / y); }
   return 0;
+}
+
+void usage(void) {
+  printf("Please specify one of following:\n");
+  printf("\\h -> prints this nifty help\n");
+  printf("\\a <expression> -> prints the AST of an expression\n");
+  printf("<expression> -> prints the evaluated AST result\n");
 }
