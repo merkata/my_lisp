@@ -30,6 +30,9 @@ lval *lval_num(long result);
 lval *lval_err(char *err);
 lval *lval_sym(char *sym);
 lval *lval_sexpr(void);
+lval *lval_read_num(mpc_ast_t *t);
+lval *lval_read(mpc_ast_t *t);
+lval *lval_add(lval *l, lval *r);
 
 /* main REPL */
 int main(int argc, char **argv) {
@@ -194,3 +197,38 @@ void lval_delete(lval *v) {
 }
 
 /* lval evaluations */
+
+lval *lval_read_num(mpc_ast_t *t) {
+  error = 0;
+  long x = strtol(t->result, NULL, 10);
+  return errno == ERANGE
+    ? lval_num(x)
+    : lval_err("invalid number");
+}
+
+lval *lval_read(mpc_ast_t *t) {
+  /* return primitive types number and symbol */
+  if(strstr(t->tag, "number")) { return lval_num(t->result); }
+  if(strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
+
+  /* when root (>) or s-expr */
+  lval *x = NULL;
+  if(strcmp(t->tag, ">") == 0) { x = lval_sexpr(); }
+  if(strstr(t->tag, "sexpr")) { x = lval_sexpr(); }
+
+  for(int i = 0; i < t->children_num; i++) {
+    if(strcmp(t->children[i]->contents, "(") == 0) { continue; }
+    if(strcmp(t->children[i]->contents, ")") == 0) { continue; }
+    if(strcmp(t->children[i]->tag, "regex") == 0) { continue; }
+    x = lval_add(x, lval_read(t->children[i]));
+  }
+
+  return x;
+}
+
+lval *lval_add(lval *l, lval *r) {
+  l->count++;
+  l->cell = realloc(l->cell, sizeof(l->cell *) * l->count);
+  l->cell[l->count - 1] = r;
+  return l;
+}
