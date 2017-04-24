@@ -6,44 +6,53 @@
 
 #include "mpc.h"
 
+/* main lisp structure - the lval */
 typedef struct {
   int type;
   long result;
-  int error;
+  /* descriptive errors */
+  char *error;
+  /* symbol type such as "+" */
+  char *sym;
+  /* count and pointer to lval */
+  int count;
+  struct lval **cell;
 } lval;
 
-enum { LVAL_NUM, LVAL_ERR };
-enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
+/* lval type */
+enum { LVAL_NUM, LVAL_ERR, LVAL_SYM, LVAL_SEXPR };
 
-lval eval(mpc_ast_t *t);
-lval eval_op(lval x, char *op, lval y);
+/* definitions */
 void usage(void);
 void throw_error(mpc_result_t *r);
 void prepare_ast(char *input, char *ast);
-lval lval_num(long result);
-lval lval_err(int err);
-void lval_print(lval v);
+lval *lval_num(long result);
+lval *lval_err(char *err);
+lval *lval_sym(char *sym);
+lval *lval_sexpr(void);
 
+/* main REPL */
 int main(int argc, char **argv) {
   //
   //MPC parser init - parsers
 
   mpc_parser_t *Number = mpc_new("number");
   mpc_parser_t *Expr = mpc_new("expr");
-  mpc_parser_t *Operator = mpc_new("operator");
+  mpc_parser_t *Sexpr = mpc_new("sexpr");
+  mpc_parser_t *Symbol = mpc_new("symbol");
   mpc_parser_t *Lispy = mpc_new("lispy");
 
   //define language of parsers
 
   mpca_lang(MPCA_LANG_DEFAULT,
-      "                                                     \
+      "                                                   \
       number   : /-?[0-9]+/ ;                             \
       operator : '+' | '-' | '*' | '/' ;                  \
-      expr     : <number> | '(' <operator> <expr>+ ')' ;  \
+      sexpr    : '(' <expr>* ')' ;                        \
+      expr     : <number> | <symbol> | <sexpr>            \
       lispy    : /^/ <operator> <expr>+ /$/ ;             \
       ",
-      Number, Operator, Expr, Lispy);
-
+      Number, Symbol, Sexpr, Expr, Lispy);
 
   puts("Lispy version 0.0.1");
   puts("Press Ctrl-C to quit\n");
@@ -52,7 +61,7 @@ int main(int argc, char **argv) {
     char *input = readline("lispy > "); //uses malloc
     char ast[81]; //I don't know how to malloc ;(
 
-    if(strcmp(input, "\n")) {
+    if (strcmp(input, "") == 0) {
       continue;
     }
 
@@ -100,44 +109,13 @@ int main(int argc, char **argv) {
 
   }
 
-  mpc_cleanup(4, Number, Operator, Expr, Lispy);
+  mpc_cleanup(5, Number, Symbol, Sexpr, Expr, Lispy);
 
   return 0;
 
 }
 
-lval eval(mpc_ast_t *t) {
-  if(strstr(t->tag, "number")) {
-    errno = 0;
-    long x = strtol(t->contents, NULL, 10);
-    return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
-  }
-
-  char *op = t->children[1]->contents;
-
-  lval x = eval(t->children[2]);
-
-  int i = 3;
-  while(strstr(t->children[i]->tag, "expr")) {
-    x = eval_op(x, op, eval(t->children[i]));
-    i++;
-  }
-
-  return x;
-}
-
-lval eval_op(lval x, char *op, lval y) {
-  if(strcmp(op, "+") == 0 ) { return lval_num(x.result + y.result); }
-  if(strcmp(op, "-") == 0 ) { return lval_num(x.result - y.result); }
-  if(strcmp(op, "*") == 0 ) { return lval_num(x.result * y.result); }
-  if(strcmp(op, "/") == 0 ) { 
-    return y.result == 0
-      ? lval_err(LERR_DIV_ZERO)
-      : lval_num(x.result / y.result);
-  }
-  return lval_err(LERR_BAD_OP);
-}
-
+/* helper functions */
 void usage(void) {
   printf("Please specify one of following:\n");
   printf("\\h -> prints this nifty help\n");
@@ -160,35 +138,59 @@ void throw_error(mpc_result_t *r) {
   mpc_err_delete(r->error);
 }
 
-lval lval_num(long result) {
-  lval v;
-  v.result = result;
-  v.type = LVAL_NUM;
+/* lval constructors */
+
+lval *lval_num(long result) {
+  lval *v = malloc(sizeof(lval));
+  v->result = result;
+  v->type = LVAL_NUM;
   return v;
 }
 
-lval lval_err(int err) {
-  lval v;
-  v.error = err;
-  v.type = LVAL_ERR;
+lval *lval_err(char *err) {
+  lval *v = malloc(sizeof(lval));
+  v->error = malloc(strlen(err) + 1);
+  strcpy(v->error, err);
+  v->type = LVAL_ERR;
   return v;
 }
 
-void lval_print(lval v) {
-  switch(v.type) {
-    case LVAL_ERR:
-      if(v.error == LERR_DIV_ZERO) {
-        printf("Division by zero error!\n");
-      }
-      if(v.error == LERR_BAD_OP) {
-        printf("Bad operator as value!\n");
-      }
-      if(v.error == LERR_BAD_NUM) {
-        printf("Number outside boundaries!\n");
-      }
-      break;
+lval *lval_sym(char *s) {
+  lval *v = malloc(sizeof(lval));
+  v->sym = malloc(strlen(s) + 1);
+  strcpy(v->sym, s);
+  v->type = LVAL_SYM;
+  return v;
+}
+
+lval *lval_sexpr(void) {
+  lval *v = malloc(sizeof(lval));
+  v->type = LVAL_SEXPR;
+  v->count = 0;
+  v->cell = NULL;
+  return v;
+}
+
+/* lval deconstructor */
+
+void lval_delete(lval *v) {
+  switch(v->type) {
     case LVAL_NUM:
-      printf("Received a value of %li\n", v.result);
       break;
+    case LVAL_ERR:
+      free(v->error);
+      break;
+    case LVAL_SYM:
+      free(v->sym);
+      break;
+    case LVAL_SEXPR:
+      for(int i = 0; i < v->count; i++) {
+        lval_delete(v->cell[i]);
+      }
+      free(v->cell);
   }
+
+  free(v);
 }
+
+/* lval evaluations */
