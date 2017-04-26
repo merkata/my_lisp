@@ -33,6 +33,9 @@ lval *lval_sexpr(void);
 lval *lval_read_num(mpc_ast_t *t);
 lval *lval_read(mpc_ast_t *t);
 lval *lval_add(lval *l, lval *r);
+void lval_print(lval *l);
+void lval_expr_print(lval *l, char a, char b);
+void lval_delete(lval *l);
 
 /* main REPL */
 int main(int argc, char **argv) {
@@ -100,9 +103,9 @@ int main(int argc, char **argv) {
       }
     } else {
       if(mpc_parse("<stdin>", input, Lispy, &r)) {
-        lval result = eval(r.output);
+        lval *result = lval_read(r.output);
         lval_print(result);
-        mpc_ast_delete(r.output);
+        lval_delete(result);
       } else {
         throw_error(&r);
       }
@@ -199,8 +202,8 @@ void lval_delete(lval *v) {
 /* lval evaluations */
 
 lval *lval_read_num(mpc_ast_t *t) {
-  error = 0;
-  long x = strtol(t->result, NULL, 10);
+  errno = 0;
+  long x = strtol(t->contents, NULL, 10);
   return errno == ERANGE
     ? lval_num(x)
     : lval_err("invalid number");
@@ -208,7 +211,7 @@ lval *lval_read_num(mpc_ast_t *t) {
 
 lval *lval_read(mpc_ast_t *t) {
   /* return primitive types number and symbol */
-  if(strstr(t->tag, "number")) { return lval_num(t->result); }
+  if(strstr(t->tag, "number")) { return lval_num(t->contents); }
   if(strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
 
   /* when root (>) or s-expr */
@@ -228,7 +231,30 @@ lval *lval_read(mpc_ast_t *t) {
 
 lval *lval_add(lval *l, lval *r) {
   l->count++;
-  l->cell = realloc(l->cell, sizeof(l->cell *) * l->count);
+  l->cell = realloc(l->cell, sizeof(lval*) * l->count);
   l->cell[l->count - 1] = r;
   return l;
+}
+
+/* lval printing functions */
+
+void lval_expr_print(lval *v, char open, char close) {
+  putchar(open);
+  for(int i = 0; i < v->count; i++ ) {
+
+    /* print the child structure one by one */
+    lval_print(v->cell[i]);
+
+  }
+
+  putchar(close);
+}
+
+void lval_print(lval *v) {
+  switch(v->type) {
+    case LVAL_NUM: printf("%li", v->result); break;
+    case LVAL_ERR: printf("Error %s", v->error); break;
+    case LVAL_SYM: printf("%s", v->sym); break;
+    case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
+  }
 }
